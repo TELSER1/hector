@@ -27,6 +27,7 @@ class AppWindow(Frame):
         self.__generate_buttons__()
         self.loadImage()
         self.initUI()
+        self.vertices = []
     def __generate_buttons__(self):
         labels = pd.read_csv(self.category_file)
         colors = itertools.cycle(["black", "red", "green", "blue", "cyan", "yellow", "magenta"])
@@ -45,10 +46,8 @@ class AppWindow(Frame):
         im = Image.fromarray(img)
         self.image = ImageTk.PhotoImage(image=im)       
     def paint(self, event):
-
         self.buttonset[self.active_button].config(relief=SUNKEN)
         self.line_width = 5
-#        print(self.buttonset[self.active_button].cget('highlightbackground'))
         paint_color =  self.buttonset[self.active_button].cget('highlightbackground')
         if self.old_x and self.old_y:
             self.canvas.create_line(self.old_x, self.old_y, event.x, event.y,
@@ -58,34 +57,56 @@ class AppWindow(Frame):
         self.pixel_labels[self.active_button].append([event.x, event.y])
         self.old_x = event.x
         self.old_y = event.y
+
+
+    def id_vertex(self, event):
+        if self.active_button:
+            self.canvas.create_line(event.x, event.y,event.x,event.y, width=10,
+                                    fill=self.buttonset[self.active_button].cget('highlightbackground'),
+                                    capstyle=ROUND, smooth=TRUE, splinesteps=1)
+            self.vertices.append((event.x, event.y))
+
+        return
+
+
         
     def activate_button(self, label):
-        self.buttonset[self.active_button].config(relief=RAISED)
+# new check
+        if self.active_button:
+            self.buttonset[self.active_button].config(relief=RAISED)
+        if self.active_button:
+            if label == self.active_button:
+                self.active_button = None
+            #Compile labels
+            else:
+            #Compile labels
+                self.active_button = label
+        else:
+            self.active_button = label  
         self.buttonset[label].config(relief=SUNKEN)
-        self.active_button = label
-        print(self.pixel_labels[label])
+        return
+#        self.active_button = label
+#        print(self.pixel_labels[label])
         
     def initUI(self):
-#        self.style = Style()
-#        self.style.theme_use("default")
         self.old_x = None
         self.old_y = None
-        self.active_button = self.labels[0]
+        self.active_button = None
         self.pack(fill=BOTH, expand=1)
         self.canvas = tkinter.Canvas(self, width = self.image.width(), height = self.image.height())
-#        self.canvas = tkinter.Canvas(self, width = 2000, height = 2000)
 
         self.canvas.pack()
         self.canvas.create_image(0, 0, image=self.image, anchor="nw")
-        self.canvas.bind('<B1-Motion>', self.paint)
-        self.canvas.bind('<ButtonRelease-1>', self.reset)
+#        self.canvas.bind('<B1-Motion>', self.paint)
+#        self.canvas.bind('<ButtonRelease-1>', self.reset)
+        self.canvas.bind("<Button-1>", self.id_vertex)
+        
     def reset(self, event):
         self.old_x = None
         self.old_y = None
 
 def main(args, parsed):
     root = Tk()
-#    root.geometry("250x150+300+300")
     app = AppWindow(root, parsed.category_file, parsed.photo_folder, parsed.destination_folder)
     root.mainloop()
 
