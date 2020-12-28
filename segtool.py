@@ -17,6 +17,8 @@ IMAGE_RESIZE_FACTOR = .3
 class AppWindow(Frame):
     def __init__(self, parent, category_file, photo_folder, destination_folder):
         Frame.__init__(self, parent)
+        self.annotations = []
+        self.annotation_id=0
         self.category_file = category_file
         self.photo_folder = photo_folder
         self.destination_folder = destination_folder
@@ -25,7 +27,7 @@ class AppWindow(Frame):
         self.pixel_labels = {}
         self.drawn_lines = {}
         self.frame = tkinter.Toplevel()
-        self.__generate_buttons__()
+        self.__generate_buttons_and_labels__()
         self.loadImage()
         self.initUI()
         self.vertices = []
@@ -37,11 +39,13 @@ class AppWindow(Frame):
         if self.active_button:
             self.activate_button(self.active_button)
             
-    def __generate_buttons__(self):
+    def __generate_buttons_and_labels__(self):
         labels = pd.read_csv(self.category_file)
         colors = itertools.cycle(["black", "red", "green", "blue", "cyan", "yellow", "magenta"])
         self.labels = list(labels['label'])
+        self.labelmap = {}
         for idx, label in enumerate(self.labels):
+            self.labelmap[idx] = label
             action = partial(self.activate_button, label=label)
             color = next(colors)
             self.buttonset[label] =  Button(self.frame, text=label, fg=color, highlightbackground=color, command=action)
@@ -92,9 +96,12 @@ class AppWindow(Frame):
         if len(self.vertices) > 2:
             print("recording segmentation")
             polygon = Polygon(self.vertices)
-            self.pixel_labels[label].append(polygon)
             self.drawn_lines[label].append(self.drawn_cache)
             self.draw_segmentation_boundaries(polygon)
+            poly = polygon.simplify(1.0, preserve_topology=False)
+            segmentation = np.array(poly.exterior.coords).ravel().tolist()
+            self.pixel_labels[label].append(polygon)
+
         self.vertices = []
         self.drawn_cache = []
         
@@ -122,6 +129,7 @@ class AppWindow(Frame):
         self.canvas.pack()
         self.canvas.create_image(0, 0, image=self.image, anchor="nw")
         self.canvas.bind("<Button-1>", self.id_vertex)
+
     def reset(self, event):
         self.old_x = None
         self.old_y = None
