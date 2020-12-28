@@ -1,9 +1,11 @@
 import tkinter
 import pandas as pd
+import numpy as np
 from PIL import Image, ImageTk
 from tkinter import Tk, BOTH
 from tkinter import Frame, Button, RAISED, SUNKEN, ROUND, TRUE
 from functools import partial
+from shapely.geometry import Polygon
 #import pdb; pdb.set_trace()
 #from tkinter.Tk import Style
 import cv2
@@ -23,10 +25,21 @@ class AppWindow(Frame):
         self.parent = parent
         self.buttonset = {}
         self.pixel_labels = {}
+        self.drawn_lines = {}
         self.frame = tkinter.Toplevel()
         self.__generate_buttons__()
         self.loadImage()
         self.initUI()
+        self.vertices = []
+        self.parent.bind("<Return>", self.finish_segmentation)
+        self.parent.bind("<Tab>", self.hello_world2)
+        self.drawn_lines = []
+        
+    def finish_segmentation(self):
+        if self.active_button:
+            self.activate_button(self.active_button)
+
+    def interrupt_segmentation(self):
         self.vertices = []
     def __generate_buttons__(self):
         labels = pd.read_csv(self.category_file)
@@ -38,6 +51,8 @@ class AppWindow(Frame):
             self.buttonset[label] =  Button(self.frame, text=label, fg=color, highlightbackground=color, command=action)
             self.buttonset[label].grid(row=idx, column=0)
             self.pixel_labels[label] = []
+            self.drawn_lines[label] = []
+
     def loadImage(self):
         img = cv2.imread("/Users/timothyelser/Downloads/IMG_0714.jpg")
         img = cv2.resize(img, (0,0), fx = IMAGE_RESIZE_FACTOR, fy = IMAGE_RESIZE_FACTOR)
@@ -45,41 +60,42 @@ class AppWindow(Frame):
         img = cv2.merge((r,g,b))
         im = Image.fromarray(img)
         self.image = ImageTk.PhotoImage(image=im)       
-    def paint(self, event):
-        self.buttonset[self.active_button].config(relief=SUNKEN)
+
+    def draw_segmentation_boundaries(self, polygon):
         self.line_width = 5
         paint_color =  self.buttonset[self.active_button].cget('highlightbackground')
-        if self.old_x and self.old_y:
-            self.canvas.create_line(self.old_x, self.old_y, event.x, event.y,
+        coords = polygon.exterior.coords
+        for s_vertex, d_vertex in zip(coords, coords[1:]):
+            self.canvas.create_line(s_vertex[0], s_vertex[1], d_vertex[0], d_vertex[1],
                                width=self.line_width, fill=paint_color,
                                capstyle=ROUND, smooth=TRUE, splinesteps=36)
-
-        self.pixel_labels[self.active_button].append([event.x, event.y])
-        self.old_x = event.x
-        self.old_y = event.y
-
-
+#self.drawn_lines need to delete lines when cancelling
     def id_vertex(self, event):
         if self.active_button:
             self.canvas.create_line(event.x, event.y,event.x,event.y, width=10,
                                     fill=self.buttonset[self.active_button].cget('highlightbackground'),
                                     capstyle=ROUND, smooth=TRUE, splinesteps=1)
-            self.vertices.append((event.x, event.y))
-
+            self.vertices.append([event.x, event.y])
+            
         return
-
-
+    
+    def __record_segmentation__(self, label):
+        if len(self.vertices) > 2:
+            print("recording segmentation")
+            polygon = Polygon(self.vertices)
+            self.pixel_labels[label].append(polygon)
+            self.draw_segmentation_boundaries(polygon)
+        self.vertices = []
         
     def activate_button(self, label):
 # new check
         if self.active_button:
             self.buttonset[self.active_button].config(relief=RAISED)
-        if self.active_button:
             if label == self.active_button:
+                self.__record_segmentation__(label)
                 self.active_button = None
-            #Compile labels
             else:
-            #Compile labels
+                self.__record_segmentation__(self.active_button)
                 self.active_button = label
         else:
             self.active_button = label  
@@ -100,7 +116,6 @@ class AppWindow(Frame):
 #        self.canvas.bind('<B1-Motion>', self.paint)
 #        self.canvas.bind('<ButtonRelease-1>', self.reset)
         self.canvas.bind("<Button-1>", self.id_vertex)
-        
     def reset(self, event):
         self.old_x = None
         self.old_y = None
