@@ -22,18 +22,25 @@ class AppWindow(Frame):
         self.category_file = category_file
         self.photo_folder = photo_folder
         self.destination_folder = destination_folder
+        self.build_imagelist()
         self.parent = parent
         self.buttonset = {}
         self.pixel_labels = {}
         self.drawn_lines = {}
         self.frame = tkinter.Toplevel()
         self.__generate_buttons_and_labels__()
-        self.loadImage()
-        self.initUI()
+#        self.loadImage()
+#        self.initUI()
         self.vertices = []
         self.parent.bind("<Return>", self.finish_segmentation)
         self.parent.bind("<Tab>", self.clean_vertex)
         self.drawn_cache = []
+        self.images = {}
+
+    def build_imagelist(self, event):
+        for idx, file_ in enumerate(os.listdir(self.destination_folder)):
+            self.images[file_] = idx
+
         
     def finish_segmentation(self, event):
         if self.active_button:
@@ -44,17 +51,37 @@ class AppWindow(Frame):
         colors = itertools.cycle(["black", "red", "green", "blue", "cyan", "yellow", "magenta"])
         self.labels = list(labels['label'])
         self.labelmap = {}
+        self.colormap = {}
         for idx, label in enumerate(self.labels):
             self.labelmap[idx] = label
             action = partial(self.activate_button, label=label)
             color = next(colors)
+            self.colormap[label] = color
             self.buttonset[label] =  Button(self.frame, text=label, fg=color, highlightbackground=color, command=action)
             self.buttonset[label].grid(row=idx, column=0)
-            self.pixel_labels[label] = []
             self.drawn_lines[label] = []
 
-    def loadImage(self):
-        img = cv2.imread("/Users/timothyelser/Downloads/IMG_0714.jpg")
+    def img_session(self, filename_):
+        #Create Canvas or delete old one
+        #If existing, fill in existing annotations and populate draw lists
+        #If not existing, seed draw lines and pixel_labs for each label.
+        try:
+            self.pixel_labels[filename_]
+            for key, value in self.pixel_labels[filename_].items():
+                self.draw_segmentation_boundaries(value)
+        except KeyError:
+            self.pixel_labels[filename] = {}
+            self.drawn_lines = {}
+            for label in self.labels:
+                self.pixel_labels[filename][label] = []
+                self.drawn_lines[label] = []
+        self.active_image=filename_
+        self.loadImage(filename_)
+        self.initUI()
+#            self.pixel_labels[label] = []
+#            self.drawn_lines[label] = []        to do: global vs photo specific params
+    def loadImage(self, img_file):
+        img = cv2.imread(img_file)
         img = cv2.resize(img, (0,0), fx = IMAGE_RESIZE_FACTOR, fy = IMAGE_RESIZE_FACTOR)
         b, g, r = cv2.split(img)
         img = cv2.merge((r,g,b))
@@ -120,8 +147,6 @@ class AppWindow(Frame):
         return
         
     def initUI(self):
-        self.old_x = None
-        self.old_y = None
         self.active_button = None
         self.pack(fill=BOTH, expand=1)
         self.canvas = tkinter.Canvas(self, width = self.image.width(), height = self.image.height())
@@ -129,10 +154,6 @@ class AppWindow(Frame):
         self.canvas.pack()
         self.canvas.create_image(0, 0, image=self.image, anchor="nw")
         self.canvas.bind("<Button-1>", self.id_vertex)
-
-    def reset(self, event):
-        self.old_x = None
-        self.old_y = None
 
 def main(args, parsed):
     root = Tk()
