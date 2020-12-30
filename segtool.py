@@ -68,17 +68,19 @@ class AppWindow(Frame):
         self.frame.bind("<Tab>", self.clean_vertex)
         self.parent.bind('<Left>', self.__prev_image__)
         self.parent.bind('<Right>', self.__next_image__)
-        self.img_session(self.annotator.image_list[self.annotator.img_idx])
         self.initUI()
+        self.image_on_canvas = None
+        self.img_session(self.annotator.image_list[self.annotator.img_idx])
+
     def __prev_image__(self, event):
-        if self.annotator.img_ix!=0:
+        if self.annotator.img_idx!=0:
             self.__clean_canvas__()
             self.annotator.img_idx-=1
             self.img_session(self.annotator.image_list[self.annotator.img_idx])
         return
 
     def __next_image__(self, event):
-        if self.annotator.img_ix<=self.annotator.n_images:
+        if self.annotator.img_idx<=self.annotator.n_images:
             self.__clean_canvas__()
             self.annotator.img_idx += 1
             self.img_session(self.annotator.image_list[self.annotator.img_idx])            
@@ -103,19 +105,24 @@ class AppWindow(Frame):
         self.drawn_lines = {}
         self.vertices = []
         self.drawn_cache = []
-        try:
-            self.annotator.annotations[filename_]
-            for key, value in self.pixel_labels[filename_].items():
-                self.draw_segmentation_boundaries(value)
-        except KeyError:
-            self.drawn_lines = {}
-            for label in self.annotator.labels:
-                self.drawn_lines[label] = []
-                self.drawn_polygons[label] = []
         if filename_ not in self.annotator.annotations.keys():
             self.annotator.annotations[filename_] = annotation(filename_, self.annotator.labels)
         self.active_annotation=self.annotator.annotations[filename_]
         self.loadImage(self.active_annotation.filename)
+        if not self.image_on_canvas:
+            self.image_on_canvas = self.canvas.create_image(0, 0, image=self.image, anchor="nw")
+        else:
+            self.canvas.itemconfig(self.image_on_canvas, image = self.image)
+        for label in self.annotator.labels:
+            self.drawn_lines[label] = []
+            self.drawn_polygons[label] = []
+        try:
+            self.annotator.annotations[filename_]
+            for label, polygons in self.annotator.annotations[filename_].polygons.items():
+                for polygon in polygons:
+                    self.draw_segmentation_boundaries(polygon, label)
+        except KeyError:
+            pass
 
     def loadImage(self, img_file):
         img = cv2.imread(img_file)
@@ -160,6 +167,7 @@ class AppWindow(Frame):
                     self.active_annotation.polygons[label].pop()
                     for ln in lines:
                         self.canvas.delete(ln)
+                if len(self.drawn_polygons[label]) > 0:
                     polygon_lines = self.drawn_polygons[label].pop()
                     for ln in polygon_lines:
                         self.canvas.delete(ln)
@@ -170,12 +178,14 @@ class AppWindow(Frame):
             self.canvas.delete(ln)
         self.drawn_cache = []
         for key in self.drawn_polygons.keys():
-            for ln in self.drawn_polygons[key]:
-                self.canvas.delete(ln)
+            for lines in self.drawn_polygons[key]:
+                for ln in lines:
+                    self.canvas.delete(ln)
             self.drawn_polygons[key] = []
         for key in self.drawn_lines.keys():
-            for ln in self.drawn_lines[key]:
-                self.canvas.delete(ln)
+            for lines in self.drawn_lines[key]:
+                for ln in lines:
+                    self.canvas.delete(ln)
             self.drawn_lines[key] = []
 
     def __record_segmentation__(self, label):
@@ -205,10 +215,10 @@ class AppWindow(Frame):
     def initUI(self):
         self.active_button = None
         self.pack(fill=BOTH, expand=1)
-        self.canvas = tkinter.Canvas(self, width = self.image.width(), height = self.image.height())
+        self.canvas = tkinter.Canvas(self, width = 1000, height = 1000)
 
         self.canvas.pack()
-        self.canvas.create_image(0, 0, image=self.image, anchor="nw")
+#        self.canvas.create_image(0, 0, image=self.image, anchor="nw")
         self.canvas.bind("<Button-1>", self.id_vertex)
 
 def main(args, parsed):
