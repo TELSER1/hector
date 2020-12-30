@@ -26,6 +26,7 @@ class Annotator:
         if not existing_annotations:
             self.build_imagelist()
         self.build_labelist()
+        
     def build_imagelist(self):
         self.image_list = []
         self.img_idx=0
@@ -33,17 +34,71 @@ class Annotator:
             self.images[os.path.join(self.photo_folder,file_)] = idx
             self.image_list.append(os.path.join(self.photo_folder,file_))
         self.n_images = len(self.image_list)
+
     def build_labelist(self):
         labels = pd.read_csv(self.category_file)
         colors = itertools.cycle(["black", "red", "green", "blue", "cyan", "yellow", "magenta"])
         self.labels = list(labels['label'])
         self.labelmap = {}
+        self.inverse_labelmap = {}
         self.colormap = {}
         for idx, label in enumerate(self.labels):
             self.labelmap[idx] = label
+            self.inverse_labelmap[label] = idx
             color = next(colors)
             self.colormap[label] = color
 
+    def annotation_boilerplate(self):
+        self.cocodata = {}
+        self.__coco_info__()
+        self.__coco_licenses__()
+        self.__coco_images__()
+        
+    def __coco_info__(self):
+        self.cocodata['info'] = {}
+        self.cocodata['info']['description'] = self.config_json['description']
+        self.cocodata['info']['version'] = self.config_json['version']
+        self.cocodata['info']['date_created'] = datetime.datetime.now().strftime("%Y-%m-%d")
+
+    def __coco_licenses__(self):
+        self.cocodata['licenses'] = {}
+
+    def __coco_categories__(self):
+        self.cocodata['categories'] = []
+        for key, value in self.labelmap.items():
+            self.cocodata['categories'].append({"category": value, "id": key, "supercategory": value})
+
+    def __coco_images__(self):
+        self.cocodata['images'] = []
+        for file_, idx in self.images:
+            self.cocodata['images'].append({"license": 1, "filename": file_, "id": idx})
+
+    def __coco_annotations__(self):
+        self.cocodata['annotations'] = []
+        counter = 0
+        for file_, annotation_ in self.annotations.items():
+            for label, polygon in annotation_.polygons.items():
+                poly = polygon.simplify(1.0, preserve_topology=False)
+                segmentation = np.array(poly.exterior.coords).ravel().tolist()
+                x, y, max_x, max_y = poly.bounds
+
+                width = max_x - x
+                height = max_y - y
+                bbox = (x, y, width, height)
+                area = poly.area
+                
+                self.cocodata['annotations'].append({"segmentation": segmentation,
+                                                     "iscrowd": 0,
+                                                     "image_id": self.images[file_],
+                                                     "category_id": self.inverse_labelmap[label],
+                                                     "id": counter,
+                                                     "bbox": bbox,
+                                                     "area": area
+                                                     }
+                                                    )
+                
+                                                     
+        return
 class annotation:
     def __init__(self, filename, labels):
         self.filename = filename
@@ -123,7 +178,6 @@ class AppWindow(Frame):
                     self.draw_segmentation_boundaries(polygon, label)
         except KeyError:
             pass
-
     def loadImage(self, img_file):
         img = cv2.imread(img_file)
         img = cv2.resize(img, (0,0), fx = IMAGE_RESIZE_FACTOR, fy = IMAGE_RESIZE_FACTOR)
@@ -194,8 +248,8 @@ class AppWindow(Frame):
             self.active_annotation.polygons[label].append(polygon)
             self.drawn_lines[label].append(self.drawn_cache)
             self.draw_segmentation_boundaries(polygon, label)
-            poly = polygon.simplify(1.0, preserve_topology=False)
-            segmentation = np.array(poly.exterior.coords).ravel().tolist()
+#            poly = polygon.simplify(1.0, preserve_topology=False)
+#            segmentation = np.array(poly.exterior.coords).ravel().tolist()
         self.vertices = []
         self.drawn_cache = []
         
