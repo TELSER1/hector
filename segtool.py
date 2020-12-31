@@ -13,7 +13,6 @@ import time
 import itertools
 import sys
 import argparse
-IMAGE_RESIZE_FACTOR = .3
 
 
 class Annotator:
@@ -23,18 +22,18 @@ class Annotator:
         self.annotation_id = 0
         self.labels = self.config_json['categories']
         self.photo_folder = self.config_json['photo_folder']
-        self.destination_folder = self.config_json['destination_folder']
         self.images = {}
         if not existing_annotations:
             self.build_imagelist()
         self.build_labelist()
+        self.annotation_boilerplate()
         
     def build_imagelist(self):
         self.image_list = []
         self.img_idx=0
         for idx, file_ in enumerate(os.listdir(self.photo_folder)):
             self.images[os.path.join(self.photo_folder,file_)] = idx
-            self.image_list.append(os.path.join(self.photo_folder,file_))
+            self.image_list.append(os.path.join(self.photo_folder, file_))
         self.n_images = len(self.image_list)
 
     def build_labelist(self):
@@ -72,25 +71,25 @@ class Annotator:
 
     def __coco_images__(self):
         self.cocodata['images'] = []
-        for file_, idx in self.images:
-            self.cocodata['images'].append({"license": 1, "filename": file_, "id": idx, "width": self.width, "height": self.height,
+        for file_, idx in self.images.items():
+            self.cocodata['images'].append({"license": 1, "filename": file_, "id": idx, "width": self.config_json['width'], "height": self.config_json['height'],
                                             "date_captured": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
 
     def __coco_annotations__(self):
         self.cocodata['annotations'] = []
         counter = 0
         for file_, annotation_ in self.annotations.items():
-            for label, polygon in annotation_.polygons.items():
-                poly = polygon.simplify(1.0, preserve_topology=False)
-                segmentation = np.array(poly.exterior.coords).ravel().tolist()
-                x, y, max_x, max_y = poly.bounds
-
-                width = max_x - x
-                height = max_y - y
-                bbox = (x, y, width, height)
-                area = poly.area
+            for label, polygons in annotation_.polygons.items():
+                for polygon in polygons:
+                    poly = polygon.simplify(1.0, preserve_topology=False)
+                    segmentation = np.array(poly.exterior.coords).ravel().tolist()
+                    x, y, max_x, max_y = poly.bounds
+                    width = max_x - x
+                    height = max_y - y
+                    bbox = (x, y, width, height)
+                    area = poly.area
                 
-                self.cocodata['annotations'].append({"segmentation": segmentation,
+                    self.cocodata['annotations'].append({"segmentation": segmentation,
                                                      "iscrowd": 0,
                                                      "image_id": self.images[file_],
                                                      "category_id": self.inverse_labelmap[label],
@@ -99,8 +98,9 @@ class Annotator:
                                                      "area": area
                                                      }
                                                     )
-                
-                                                     
+                    counter += 1
+        with open(self.config_json['destination_file'], 'w') as file_:
+            json.dump(self.cocodata, file_) 
         return
 class annotation:
     def __init__(self, filename, labels):
@@ -137,13 +137,16 @@ class AppWindow(Frame):
             self.__clean_canvas__()
             self.annotator.img_idx-=1
             self.img_session(self.annotator.image_list[self.annotator.img_idx])
+            self.annotator.__coco_annotations__()
+
         return
 
     def __next_image__(self, event):
         if self.annotator.img_idx<=self.annotator.n_images:
             self.__clean_canvas__()
             self.annotator.img_idx += 1
-            self.img_session(self.annotator.image_list[self.annotator.img_idx])            
+            self.img_session(self.annotator.image_list[self.annotator.img_idx])
+            self.annotator.__coco_annotations__()
         return
 
     def finish_segmentation(self, event):
