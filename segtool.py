@@ -1,5 +1,6 @@
 import tkinter
-import pandas as pd
+import json
+import datetime
 import numpy as np
 from PIL import Image, ImageTk
 from tkinter import Tk, BOTH
@@ -16,12 +17,13 @@ IMAGE_RESIZE_FACTOR = .3
 
 
 class Annotator:
-    def __init__(self, category_file, photo_folder, destination_folder, existing_annotations=None):
+    def __init__(self, config_json, existing_annotations=None):
+        self.config_json = config_json
         self.annotations = {}
         self.annotation_id = 0
-        self.category_file = category_file
-        self.photo_folder = photo_folder
-        self.destination_folder = destination_folder
+        self.labels = self.config_json['categories']
+        self.photo_folder = self.config_json['photo_folder']
+        self.destination_folder = self.config_json['destination_folder']
         self.images = {}
         if not existing_annotations:
             self.build_imagelist()
@@ -36,9 +38,8 @@ class Annotator:
         self.n_images = len(self.image_list)
 
     def build_labelist(self):
-        labels = pd.read_csv(self.category_file)
+        labels = self.labels
         colors = itertools.cycle(["black", "red", "green", "blue", "cyan", "yellow", "magenta"])
-        self.labels = list(labels['label'])
         self.labelmap = {}
         self.inverse_labelmap = {}
         self.colormap = {}
@@ -53,6 +54,7 @@ class Annotator:
         self.__coco_info__()
         self.__coco_licenses__()
         self.__coco_images__()
+        self.__coco_categories__()
         
     def __coco_info__(self):
         self.cocodata['info'] = {}
@@ -71,7 +73,8 @@ class Annotator:
     def __coco_images__(self):
         self.cocodata['images'] = []
         for file_, idx in self.images:
-            self.cocodata['images'].append({"license": 1, "filename": file_, "id": idx})
+            self.cocodata['images'].append({"license": 1, "filename": file_, "id": idx, "width": self.width, "height": self.height,
+                                            "date_captured": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
 
     def __coco_annotations__(self):
         self.cocodata['annotations'] = []
@@ -110,9 +113,11 @@ class annotation:
     
     
 class AppWindow(Frame):
-    def __init__(self, parent, category_file, photo_folder, destination_folder):
+    def __init__(self, parent, config_file):
         Frame.__init__(self, parent)
-        self.annotator = Annotator(category_file, photo_folder, destination_folder)
+        self.annotator = Annotator(config_file)
+        self.width = config_file['width']
+        self.height = config_file['height']
         self.parent = parent
         self.buttonset = {}
         self.frame = tkinter.Toplevel()
@@ -178,9 +183,10 @@ class AppWindow(Frame):
                     self.draw_segmentation_boundaries(polygon, label)
         except KeyError:
             pass
+
     def loadImage(self, img_file):
         img = cv2.imread(img_file)
-        img = cv2.resize(img, (0,0), fx = IMAGE_RESIZE_FACTOR, fy = IMAGE_RESIZE_FACTOR)
+        img = cv2.resize(img, (self.width, self.height))
         b, g, r = cv2.split(img)
         img = cv2.merge((r,g,b))
         im = Image.fromarray(img)
@@ -269,22 +275,22 @@ class AppWindow(Frame):
     def initUI(self):
         self.active_button = None
         self.pack(fill=BOTH, expand=1)
-        self.canvas = tkinter.Canvas(self, width = 1000, height = 1000)
+        self.canvas = tkinter.Canvas(self, width = self.width, height = self.height)
 
         self.canvas.pack()
 #        self.canvas.create_image(0, 0, image=self.image, anchor="nw")
         self.canvas.bind("<Button-1>", self.id_vertex)
 
-def main(args, parsed):
+def main(config_json):
     root = Tk()
-    app = AppWindow(root, parsed.category_file, parsed.photo_folder, parsed.destination_folder)
+    app = AppWindow(root, config_json)
     root.mainloop()
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='specify label options, photo_folder, destination_folder')
-    parser.add_argument("--category_file", type=str)
-    parser.add_argument("--photo_folder", type=str, default=None)
-    parser.add_argument("--destination_folder", type=str, default=None)
+    parser.add_argument("--config_file", type=str)
     parsed = parser.parse_args()
-    main(parser,  parsed)
+    with open(parsed.config_file, 'r') as json_:
+        config_json = json.load(json_)
+    main(config_json)
